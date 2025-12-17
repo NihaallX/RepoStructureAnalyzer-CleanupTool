@@ -33,3 +33,21 @@ and produces safe, actionable proposals (MOVE / FLAG) without modifying files.
 ## Installation
 ```bash
 pip install -e .
+
+## Usage
+python -m src.cli analyze .
+python -m src.cli propose .
+
+Output
+
+MOVE proposals (when safe)
+
+FLAG proposals with risk stratification
+
+Clean summary grouped by action and risk
+
+Known limitations
+
+Frontend build directories generate noisy duplicate flags
+
+Tool is optimized for Python repo conventions
