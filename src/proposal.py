@@ -50,8 +50,19 @@ class Proposal:
         lines.append(f"REASON: {self.reason}")
         lines.append(f"RISK: {self.risk_level.value.upper()}")
         if self.details:
-            for key, value in self.details.items():
-                lines.append(f"  {key}: {value}")
+            # Special handling for grouped duplicates
+            if 'examples' in self.details:
+                lines.append(f"  Examples:")
+                for example in self.details['examples']:
+                    lines.append(f"    - {example}")
+                if 'remaining' in self.details:
+                    lines.append(f"    ({self.details['remaining']})")
+            else:
+                # Regular details
+                for key, value in self.details.items():
+                    # Skip internal keys used for grouping
+                    if key not in ('all_duplicates',):
+                        lines.append(f"  {key}: {value}")
         return '\n'.join(lines)
 
 
