@@ -43,5 +43,8 @@ htmlcov/
 # Logs
 *.log
 
+# V2.1 Operation history
+.repo-tool-history.json
+
 # Snapshots (for rollback)
 .snapshots/
