@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-@click.version_option(version='0.1.0')
+@click.version_option(version='2.0.0')
 def cli():
     """Repo Structure Analyzer and Cleanup Tool
     
@@ -55,7 +55,7 @@ def analyze(repo_path, verbose):
             click.echo(f"  {ext}: {count}")
         
         click.echo()
-        click.echo("✓ Analysis complete")
+        click.echo("[+] Analysis complete")
         click.echo("Run 'repo-tool propose' to see suggested changes")
         
     except Exception as e:
@@ -97,9 +97,9 @@ def propose(repo_path, format, verbose, output):
         click.echo(f"Repository type: {repo_type}")
         
         if reasoner.repo_type and reasoner.repo_type.value == "non_python":
-            click.echo("⚠️  Non-Python repository: Only duplicate detection active")
+            click.echo("[!] Non-Python repository: Only duplicate detection active")
         elif reasoner.repo_type and reasoner.repo_type.value == "mixed":
-            click.echo("ℹ️  Mixed repository: MOVE proposals limited to Python files")
+            click.echo("[i] Mixed repository: MOVE proposals limited to Python files")
         
         # Step 3: Output
         if format == 'json':
@@ -110,7 +110,7 @@ def propose(repo_path, format, verbose, output):
         if output:
             with open(output, 'w') as f:
                 f.write(result)
-            click.echo(f"\n✓ Proposals written to {output}")
+            click.echo(f"\n[+] Proposals written to {output}")
         else:
             click.echo("\n" + result)
         
@@ -139,7 +139,7 @@ def apply(repo_path):
     
     REPO_PATH: Path to the repository (default: current directory)
     """
-    click.echo("⚠️  Apply functionality coming soon!")
+    click.echo("[!] Apply functionality coming soon!")
     click.echo()
     click.echo("This will:")
     click.echo("  1. Load proposals from previous 'propose' run")
@@ -157,7 +157,7 @@ def rollback(repo_path):
     
     REPO_PATH: Path to the repository (default: current directory)
     """
-    click.echo("⚠️  Rollback functionality coming soon!")
+    click.echo("[!] Rollback functionality coming soon!")
     click.echo()
     click.echo("This will:")
     click.echo("  1. Find the most recent snapshot")

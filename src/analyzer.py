@@ -52,6 +52,24 @@ class RepositoryAnalyzer:
         '.tox', '.coverage',
     }
     
+    # Artifact directories (exact match, recursively excluded)
+    # V2: These are build outputs and generated files that should never be analyzed
+    # V2: Prevents noise from .next/, out/, dist/, etc. in frontend repositories
+    ARTIFACT_DIRS = {
+        '.next',           # Next.js build output
+        'out',             # Next.js static export
+        '_next',           # Next.js runtime
+        'dist',            # Common build output
+        'build',           # Common build output
+        'coverage',        # Test coverage reports
+        '.nuxt',           # Nuxt.js
+        '.output',         # Nuxt 3
+        '.vercel',         # Vercel build cache
+        '.netlify',        # Netlify build cache
+        'public/build',    # Rails/Vite
+        'static/chunks',   # Webpack chunks
+    }
+    
     # File patterns to ignore
     IGNORE_PATTERNS = {
         '*.pyc', '*.pyo', '*.pyd',
@@ -72,7 +90,7 @@ class RepositoryAnalyzer:
         logger.info(f"Initialized analyzer for: {self.repo_path}")
     
     def should_ignore(self, path: Path) -> bool:
-        """Check if path should be ignored (path containment check)."""
+        """Check if path should be ignored (path containment + artifact check)."""
         # Check all directory parts of the path
         # For a file: check all parts except the filename (to avoid 'env' matching 'environment.py')
         # For a directory: check all parts including the directory itself
@@ -87,7 +105,14 @@ class RepositoryAnalyzer:
             # For directories, check all parts including the directory name
             parts_to_check = path.parts
         
-        # Check if any directory part contains an ignored directory name
+        # V2 ARTIFACT CHECK: Exact match on artifact directories (highest priority)
+        # V2: If any path part is an exact artifact directory, exclude the entire subtree
+        # V2: This prevents analyzing .next/out/dist and their contents entirely
+        for part in parts_to_check:
+            if part in self.ARTIFACT_DIRS:
+                return True
+        
+        # PATH CONTAINMENT CHECK: Check if any directory part contains an ignored directory name
         for part in parts_to_check:
             part_lower = part.lower()
             for ignored in self.IGNORE_DIRS:

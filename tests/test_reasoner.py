@@ -370,15 +370,18 @@ class TestDuplicateRiskStratification:
         reasoner = StructureReasoner(self.temp_dir)
         generator = reasoner.generate_proposals(files)
         
-        # Find duplicate flags for requirements.txt
+        # Find duplicate flags for requirements.txt (V2: one grouped FLAG)
         flags = generator.get_by_action(ActionType.FLAG)
         req_flags = [f for f in flags 
                     if 'requirements.txt' in str(f.source_path) 
                     and 'Duplicate filename' in f.reason]
         
-        assert len(req_flags) == 2, "Both requirements.txt files should be flagged"
-        for flag in req_flags:
-            assert flag.risk_level == RiskLevel.HIGH, "requirements.txt duplicates should be HIGH risk"
+        assert len(req_flags) == 1, "Should have one grouped FLAG for requirements.txt duplicates"
+        flag = req_flags[0]
+        assert flag.risk_level == RiskLevel.HIGH, "requirements.txt duplicates should be HIGH risk"
+        assert flag.details['total_count'] == 2, "Should show 2 duplicates"
+        assert 'requirements.txt' in flag.details['all_duplicates'][0]
+        assert 'backup' in str(flag.details['all_duplicates'][1])
     
     def test_low_risk_duplicates(self):
         """Test that documentation duplicates are flagged as LOW risk."""
@@ -391,15 +394,16 @@ class TestDuplicateRiskStratification:
         reasoner = StructureReasoner(self.temp_dir)
         generator = reasoner.generate_proposals(files)
         
-        # Find duplicate flags for README.md
+        # Find duplicate flags for README.md (V2: one grouped FLAG)
         flags = generator.get_by_action(ActionType.FLAG)
         readme_flags = [f for f in flags 
                        if 'readme.md' in str(f.source_path).lower() 
                        and 'Duplicate filename' in f.reason]
         
-        assert len(readme_flags) == 2, "Both README.md files should be flagged"
-        for flag in readme_flags:
-            assert flag.risk_level == RiskLevel.LOW, "README.md duplicates should be LOW risk"
+        assert len(readme_flags) == 1, "Should have one grouped FLAG for README.md duplicates"
+        flag = readme_flags[0]
+        assert flag.risk_level == RiskLevel.LOW, "README.md duplicates should be LOW risk"
+        assert flag.details['total_count'] == 2, "Should show 2 duplicates"
     
     def test_log_file_duplicates_low_risk(self):
         """Test that log file duplicates are flagged as LOW risk."""
@@ -417,9 +421,10 @@ class TestDuplicateRiskStratification:
                     if 'app.log' in str(f.source_path) 
                     and 'Duplicate filename' in f.reason]
         
-        assert len(log_flags) == 2, "Both app.log files should be flagged"
-        for flag in log_flags:
-            assert flag.risk_level == RiskLevel.LOW, "Log file duplicates should be LOW risk"
+        assert len(log_flags) == 1, "Should have one grouped FLAG for app.log duplicates"
+        flag = log_flags[0]
+        assert flag.risk_level == RiskLevel.LOW, "Log file duplicates should be LOW risk"
+        assert flag.details['total_count'] == 2, "Should show 2 duplicates"
     
     def test_medium_risk_duplicates_default(self):
         """Test that regular duplicates default to MEDIUM risk."""
@@ -437,9 +442,10 @@ class TestDuplicateRiskStratification:
                       if 'utils.py' in str(f.source_path) 
                       and 'Duplicate filename' in f.reason]
         
-        assert len(utils_flags) == 2, "Both utils.py files should be flagged"
-        for flag in utils_flags:
-            assert flag.risk_level == RiskLevel.MEDIUM, "Regular duplicates should be MEDIUM risk"
+        assert len(utils_flags) == 1, "Should have one grouped FLAG for utils.py duplicates"
+        flag = utils_flags[0]
+        assert flag.risk_level == RiskLevel.MEDIUM, "Regular duplicates should be MEDIUM risk"
+        assert flag.details['total_count'] == 2, "Should show 2 duplicates"
     
     def test_env_file_duplicates_high_risk(self):
         """Test that .env file duplicates are flagged as HIGH risk."""
@@ -457,7 +463,10 @@ class TestDuplicateRiskStratification:
                     if '.env' in str(f.source_path) 
                     and 'Duplicate filename' in f.reason]
         
-        assert len(env_flags) == 2, "Both .env files should be flagged"
+        assert len(env_flags) == 1, "Should have one grouped FLAG for .env duplicates"
+        flag = env_flags[0]
+        assert flag.risk_level == RiskLevel.HIGH, ".env duplicates should be HIGH risk"
+        assert flag.details['total_count'] == 2, "Should show 2 duplicates"
         for flag in env_flags:
             assert flag.risk_level == RiskLevel.HIGH, ".env duplicates should be HIGH risk"
 
@@ -584,15 +593,20 @@ class TestFlagSuppression:
         reasoner = StructureReasoner(self.temp_dir)
         generator = reasoner.generate_proposals(files)
         
-        # Both utils.py files should have duplicate FLAGs
+        # V2: One grouped FLAG per duplicate set
         flags = generator.get_by_action(ActionType.FLAG)
         duplicate_flags = [f for f in flags if 'Duplicate filename' in f.reason]
-        assert len(duplicate_flags) == 2, "Duplicate FLAGs should be kept even when MOVE exists"
+        assert len(duplicate_flags) == 1, "Duplicate FLAG should be kept even when MOVE exists"
         
-        # Verify both utils.py files are flagged
-        flagged_files = {str(f.source_path) for f in duplicate_flags}
-        assert 'utils.py' in flagged_files
-        assert str(Path('backup') / 'utils.py') in flagged_files
+        # Validate the grouped FLAG contains both files
+        flag = duplicate_flags[0]
+        assert flag.details['total_count'] == 2
+        assert len(flag.details['all_duplicates']) == 2
+        
+        # Verify both utils.py paths are in the all_duplicates list
+        all_dups = flag.details['all_duplicates']
+        assert 'utils.py' in all_dups
+        assert str(Path('backup') / 'utils.py') in all_dups or 'backup\\utils.py' in all_dups
     
     def test_no_suppression_when_no_move(self):
         """Test that FLAGs are not suppressed when no MOVE exists."""

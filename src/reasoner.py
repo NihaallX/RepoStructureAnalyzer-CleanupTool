@@ -7,6 +7,7 @@ from .analyzer import FileMetadata
 from .classifier import FileClassifier, FileCategory
 from .proposal import ProposalGenerator, RiskLevel, ActionType
 from .repo_type import RepoTypeDetector, RepoType
+from .ecosystem import get_profile_for_repo_type, EcosystemProfile
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class StructureReasoner:
         self.generator = ProposalGenerator()
         self.detector = RepoTypeDetector()
         self.repo_type = None
+        self.ecosystem_profile: EcosystemProfile = None
     
     def generate_proposals(self, files: List[FileMetadata]) -> ProposalGenerator:
         """Generate all proposals for the repository."""
@@ -36,6 +38,11 @@ class StructureReasoner:
         # Step 1: Detect repository type
         self.repo_type = self.detector.detect(files)
         logger.info(f"Repository type: {self.repo_type.value}")
+        
+        # V2: Select ecosystem profile based on repository type
+        # V2: Enables suppression of expected framework duplicates (e.g., index.html in Next.js)
+        self.ecosystem_profile = get_profile_for_repo_type(self.repo_type)
+        logger.info(f"Using ecosystem profile: {self.ecosystem_profile.name}")
         
         # Step 2: Add informational message for non-Python repos
         if self.repo_type == RepoType.NON_PYTHON:
@@ -323,7 +330,14 @@ class StructureReasoner:
         return RiskLevel.MEDIUM
     
     def _detect_duplicates(self, files: List[FileMetadata]):
-        """Detect potential duplicate files."""
+        """V2: Detect potential duplicate files and emit grouped FLAGs.
+        
+        V2 Behavior:
+        - Emits ONE FLAG per duplicate group (not one per file)
+        - Includes total count, examples, and remaining indicator
+        - Respects ecosystem profile suppression (e.g., index.html in Next.js)
+        - Maintains risk stratification (HIGH/MEDIUM/LOW)
+        """
         by_name = {}
         for file in files:
             name = file.name.lower()
@@ -338,16 +352,40 @@ class StructureReasoner:
         
         for name, file_list in by_name.items():
             if len(file_list) > 1:
+                # V2: Check if ecosystem profile suppresses this duplicate
+                if self.ecosystem_profile and self.ecosystem_profile.should_suppress_duplicate(file_list[0].name):
+                    logger.debug(f"Suppressing duplicate for {file_list[0].name} (ecosystem: {self.ecosystem_profile.name})")
+                    continue
+                
                 # Assess risk based on filename
                 risk = self._assess_duplicate_risk(file_list[0].name)
                 
-                # Flag duplicates
-                for file in file_list:
-                    self.generator.add_flag(
-                        source=file.relative_path,
-                        reason=f"Duplicate filename: {len(file_list)} files named '{name}'",
-                        risk=risk,
-                        duplicates=[str(f.relative_path) for f in file_list],
+                # V2 GROUPED DUPLICATE FLAG: Emit one FLAG per duplicate group
+                # V2: Include up to 3 example paths, indicate remaining count
+                total_count = len(file_list)
+                example_paths = [str(f.relative_path) for f in file_list[:3]]
+                remaining = total_count - 3
+                
+                # Build the reason with examples
+                reason = f"Duplicate filename: {total_count} files named '{file_list[0].name}'"
+                
+                # Build details with all paths for reference
+                all_paths = [str(f.relative_path) for f in file_list]
+                details = {
+                    'total_count': total_count,
+                    'examples': example_paths,
+                    'all_duplicates': all_paths,
+                }
+                
+                if remaining > 0:
+                    details['remaining'] = f"+{remaining} more"
+                
+                # Emit single grouped FLAG using first file as the source
+                self.generator.add_flag(
+                    source=file_list[0].relative_path,
+                    reason=reason,
+                    risk=risk,
+                    **details,
                     )
     
     def _detect_orphans(self, files: List[FileMetadata]):
