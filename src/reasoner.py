@@ -108,6 +108,13 @@ class StructureReasoner:
         if target_path is None:
             return
         
+        # Skip no-op moves (source == target)
+        # Resolve both paths to normalize separators and compare
+        source_resolved = Path(current_path)
+        target_resolved = Path(target_path)
+        if source_resolved == target_resolved:
+            return
+        
         # Calculate risk level
         risk = self._assess_risk(file, category)
         
