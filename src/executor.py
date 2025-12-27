@@ -211,7 +211,198 @@ class ProposalExecutor:
             'skipped': skipped,
             'dry_run': self.dry_run,
         }
-
-        # - Clean up
+    
+    def rollback_moves(self, count: int) -> List[ExecutionResult]:
+        """Rollback (undo) the last N successful MOVE operations.
         
-        raise NotImplementedError("Rollback functionality coming in future version")
+        This reverses previously executed MOVE operations by reading the history
+        file and moving files from target back to source in reverse order (LIFO).
+        
+        Args:
+            count: Number of operations to rollback
+        
+        Returns:
+            List of ExecutionResult for each rollback attempt
+        
+        Safety guarantees:
+        - Only undoes MOVE actions with status=SUCCESS
+        - Validates target exists and source doesn't exist before undo
+        - Fails fast on first validation error
+        - Logs all rollback operations to history
+        """
+        # Read history file
+        if not self.log_file.exists():
+            logger.warning(f"No history file found: {self.log_file}")
+            return []
+        
+        try:
+            with open(self.log_file, 'r') as f:
+                history = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read history: {e}")
+            return []
+        
+        # Filter for successful MOVE operations
+        moves = [
+            entry for entry in history
+            if entry.get('action', '').upper() == 'MOVE' 
+            and entry.get('success') is True
+            and entry.get('skipped') is not True
+        ]
+        
+        if not moves:
+            logger.info("No successful MOVE operations found in history")
+            return []
+        
+        # Take last N moves (reverse chronological)
+        moves_to_undo = moves[-count:] if count < len(moves) else moves
+        moves_to_undo.reverse()  # LIFO: undo most recent first
+        
+        logger.info(f"Rolling back {len(moves_to_undo)} operations (dry_run={self.dry_run})")
+        
+        rollback_results = []
+        
+        for i, move_entry in enumerate(moves_to_undo, 1):
+            # Extract paths (swap source/target for rollback)
+            original_source = Path(move_entry['source'])
+            original_target = Path(move_entry['target'])
+            
+            # For rollback: move target → source
+            rollback_source = original_target
+            rollback_target = original_source
+            
+            # Validate rollback operation
+            source_full = self.repo_path / rollback_source
+            target_full = self.repo_path / rollback_target
+            
+            # Safety check: target (original location) must exist
+            if not source_full.exists():
+                error_msg = f"Rollback validation failed: Target file does not exist: {source_full}"
+                logger.error(error_msg)
+                result = ExecutionResult(
+                    proposal=Proposal(
+                        action=ActionType.MOVE,
+                        source_path=rollback_source,
+                        target_path=rollback_target,
+                        reason=f"Rollback of {original_source} -> {original_target}",
+                        risk_level=RiskLevel.HIGH
+                    ),
+                    success=False,
+                    message=error_msg
+                )
+                rollback_results.append(result)
+                logger.error(f"Aborting rollback after {i-1}/{len(moves_to_undo)} operations")
+                break
+            
+            # Safety check: source (original location) must NOT exist
+            if target_full.exists():
+                error_msg = f"Rollback validation failed: Source location already exists (conflict): {target_full}"
+                logger.error(error_msg)
+                result = ExecutionResult(
+                    proposal=Proposal(
+                        action=ActionType.MOVE,
+                        source_path=rollback_source,
+                        target_path=rollback_target,
+                        reason=f"Rollback of {original_source} -> {original_target}",
+                        risk_level=RiskLevel.HIGH
+                    ),
+                    success=False,
+                    message=error_msg
+                )
+                rollback_results.append(result)
+                logger.error(f"Aborting rollback after {i-1}/{len(moves_to_undo)} operations")
+                break
+            
+            # Execute rollback
+            try:
+                if self.dry_run:
+                    message = f"[DRY-RUN] Would rollback {rollback_source} -> {rollback_target}"
+                    logger.info(message)
+                    result = ExecutionResult(
+                        proposal=Proposal(
+                            action=ActionType.MOVE,
+                            source_path=rollback_source,
+                            target_path=rollback_target,
+                            reason=f"Rollback of {original_source} -> {original_target}",
+                            risk_level=RiskLevel.HIGH
+                        ),
+                        success=True,
+                        message=message
+                    )
+                else:
+                    # Create target directory if needed
+                    target_dir = target_full.parent
+                    if not target_dir.exists():
+                        target_dir.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"Created directory: {target_dir}")
+                    
+                    # Move the file back
+                    shutil.move(str(source_full), str(target_full))
+                    message = f"Rolled back {rollback_source} -> {rollback_target}"
+                    logger.info(message)
+                    
+                    result = ExecutionResult(
+                        proposal=Proposal(
+                            action=ActionType.MOVE,
+                            source_path=rollback_source,
+                            target_path=rollback_target,
+                            reason=f"Rollback of {original_source} -> {original_target}",
+                            risk_level=RiskLevel.HIGH
+                        ),
+                        success=True,
+                        message=message
+                    )
+                
+                rollback_results.append(result)
+                
+            except Exception as e:
+                error_msg = f"Rollback failed: {str(e)}"
+                logger.error(error_msg)
+                result = ExecutionResult(
+                    proposal=Proposal(
+                        action=ActionType.MOVE,
+                        source_path=rollback_source,
+                        target_path=rollback_target,
+                        reason=f"Rollback of {original_source} -> {original_target}",
+                        risk_level=RiskLevel.HIGH
+                    ),
+                    success=False,
+                    message=error_msg
+                )
+                rollback_results.append(result)
+                logger.error(f"Aborting rollback after {i-1}/{len(moves_to_undo)} operations")
+                break
+        
+        # Save rollback operations to history
+        if not self.dry_run and rollback_results:
+            self._save_rollback_history(rollback_results)
+        
+        return rollback_results
+    
+    def _save_rollback_history(self, rollback_results: List[ExecutionResult]):
+        """Save rollback operations to history file."""
+        if not rollback_results:
+            return
+        
+        # Load existing history
+        history = []
+        if self.log_file.exists():
+            try:
+                with open(self.log_file, 'r') as f:
+                    history = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not load existing history: {e}")
+        
+        # Append rollback results with ROLLBACK action marker
+        for result in rollback_results:
+            entry = result.to_dict()
+            entry['action'] = 'ROLLBACK'  # Mark as rollback operation
+            history.append(entry)
+        
+        # Save
+        try:
+            with open(self.log_file, 'w') as f:
+                json.dump(history, f, indent=2)
+            logger.info(f"Saved rollback history to {self.log_file}")
+        except Exception as e:
+            logger.error(f"Failed to save rollback history: {e}")
