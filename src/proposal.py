@@ -46,7 +46,7 @@ class Proposal:
         lines = []
         lines.append(f"{self.action.value.upper()}: {self.source_path}")
         if self.target_path:
-            lines.append(f"    → {self.target_path}")
+            lines.append(f"    -> {self.target_path}")
         lines.append(f"REASON: {self.reason}")
         lines.append(f"RISK: {self.risk_level.value.upper()}")
         if self.details:

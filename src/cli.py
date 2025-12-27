@@ -8,12 +8,13 @@ import sys
 from .analyzer import RepositoryAnalyzer
 from .reasoner import StructureReasoner
 from .proposal import ActionType
+from .executor import ProposalExecutor
 
 logger = logging.getLogger(__name__)
 
 
 @click.group()
-@click.version_option(version='2.1.0')
+@click.version_option(version='2.2.0')
 def cli():
     """Repo Structure Analyzer and Cleanup Tool
     
@@ -136,6 +137,92 @@ def propose(repo_path, format, verbose, output):
 
 @cli.command()
 @click.argument('repo_path', type=click.Path(exists=True), default='.')
+@click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
+@click.option('--show-tree', is_flag=True, default=True, help='Show before/after directory tree (default: on)')
+@click.option('--show-impact', is_flag=True, default=True, help='Show impact summary (default: on)')
+def preview(repo_path, verbose, show_tree, show_impact):
+    """Preview structural changes with tree diff and impact summary (V2.2 Phase 2).
+    
+    REPO_PATH: Path to the repository (default: current directory)
+    
+    Shows what your repository will look like after applying proposals,
+    without making any filesystem changes. Works for all repository types.
+    
+    Examples:
+        repo-tool preview                  # Full preview with tree and summary
+        repo-tool preview --no-show-tree   # Impact summary only
+    """
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    from .visualizer import TreeDiffVisualizer
+    
+    try:
+        click.echo(f"Analyzing repository: {repo_path}")
+        click.echo()
+        
+        # Step 1: Analyze
+        analyzer = RepositoryAnalyzer(repo_path)
+        files = analyzer.analyze()
+        
+        # Step 2: Generate proposals
+        reasoner = StructureReasoner(Path(repo_path))
+        generator = reasoner.generate_proposals(files)
+        proposals = generator.proposals
+        
+        if not proposals:
+            click.echo("[!] No proposals generated.")
+            click.echo()
+            click.echo("This repository is either:")
+            click.echo("  - Already well-organized")
+            click.echo("  - Empty or has no relevant files")
+            return
+        
+        # Step 3: Create visualizer
+        current_file_paths = [f.relative_path for f in files]
+        visualizer = TreeDiffVisualizer(proposals, current_file_paths)
+        
+        # Step 4: Show impact summary
+        if show_impact:
+            click.echo(visualizer.render_impact_summary())
+            click.echo()
+        
+        # Step 5: Show tree diff
+        if show_tree:
+            move_proposals = [p for p in proposals if p.action == ActionType.MOVE]
+            if move_proposals:
+                click.echo(visualizer.render_tree_diff())
+            else:
+                click.echo("=" * 60)
+                click.echo("DIRECTORY STRUCTURE")
+                click.echo("=" * 60)
+                click.echo()
+                click.echo("No structural changes proposed (advisory mode).")
+                click.echo("Review flagged items in 'repo-tool propose' output.")
+                click.echo()
+                click.echo("=" * 60)
+        
+        # Step 6: Next steps
+        click.echo()
+        click.echo("Next steps:")
+        if reasoner.repo_type and reasoner.repo_type.value == "python_dominant":
+            click.echo("  1. Run 'repo-tool apply --execute' to apply changes interactively")
+            click.echo("  2. Or run 'repo-tool apply --execute --yes' to auto-approve all (risky)")
+            click.echo("  3. Use 'repo-tool rollback --undo-last N --execute' to undo if needed")
+        else:
+            click.echo("  1. Review 'repo-tool propose' output for detailed analysis")
+            click.echo("  2. This tool provides advisory-only mode for non-Python repositories")
+            click.echo("  3. Manual cleanup recommended based on flagged issues")
+        
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        if verbose:
+            raise
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('repo_path', type=click.Path(exists=True), default='.')
 @click.option('--dry-run/--execute', default=True, help='Dry-run mode (default) or real execution')
 @click.option('--yes', '-y', is_flag=True, help='Auto-approve all proposals (dangerous!)')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
@@ -154,8 +241,6 @@ def apply(repo_path, dry_run, yes, verbose):
     """
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
-    from .executor import ProposalExecutor
     
     try:
         click.echo(f"Analyzing repository: {repo_path}")
@@ -187,7 +272,15 @@ def apply(repo_path, dry_run, yes, verbose):
             click.echo("Override with --yes flag if you're sure.")
             return
         
-        # Step 2: Show summary
+        # Step 2: Show visualization (V2.2 Phase 2)
+        from .visualizer import TreeDiffVisualizer
+        current_file_paths = [f.relative_path for f in files]
+        visualizer = TreeDiffVisualizer(generator.proposals, current_file_paths)
+        
+        click.echo(visualizer.render_impact_summary())
+        click.echo()
+        
+        # Step 3: Show execution mode
         mode_str = "[DRY-RUN]" if dry_run else "[EXECUTE]"
         click.echo(f"{mode_str} Found {len(move_proposals)} MOVE proposals")
         click.echo()
@@ -205,10 +298,10 @@ def apply(repo_path, dry_run, yes, verbose):
         
         click.echo()
         
-        # Step 3: Initialize executor
+        # Step 4: Initialize executor
         executor = ProposalExecutor(Path(repo_path), dry_run=dry_run)
         
-        # Step 4: Interactive approval loop
+        # Step 5: Interactive approval loop
         applied_count = 0
         skipped_count = 0
         
@@ -301,47 +394,137 @@ def apply(repo_path, dry_run, yes, verbose):
 
 @cli.command()
 @click.argument('repo_path', type=click.Path(exists=True), default='.')
-def rollback(repo_path):
-    """View execution history (V2.1).
+@click.option('--undo-last', type=int, default=None,
+              help='Undo the last N successful MOVE operations (default: view history only)')
+@click.option('--dry-run', is_flag=True, default=True,
+              help='Preview rollback without making changes (default)')
+@click.option('--execute', 'execute_rollback', is_flag=True,
+              help='Actually perform the rollback (undo file moves)')
+@click.option('--verbose', is_flag=True, help='Show detailed logging')
+def rollback(repo_path, undo_last, dry_run, execute_rollback, verbose):
+    """Undo previously executed MOVE operations (V2.2).
     
     REPO_PATH: Path to the repository (default: current directory)
     
-    Shows the history of applied changes from .repo-tool-history.json
+    Without --undo-last: Shows history of applied changes
+    With --undo-last N: Undoes the last N successful MOVE operations
+    
+    Examples:
+        repo-tool rollback                    # View history
+        repo-tool rollback --undo-last 5      # Preview undoing last 5 moves
+        repo-tool rollback --undo-last 5 --execute  # Actually undo last 5 moves
+    
+    Safety: Rollback validates that target exists and source doesn't exist
+    before undoing. Aborts on first conflict. Dry-run is the default.
     """
+    if verbose:
+        logging.basicConfig(level=logging.INFO)
+    
     log_file = Path(repo_path) / '.repo-tool-history.json'
     
-    if not log_file.exists():
-        click.echo("[!] No execution history found.")
-        click.echo()
-        click.echo("History is created when you apply changes with --execute mode.")
-        return
-    
-    try:
-        with open(log_file, 'r') as f:
-            history = json.load(f)
-        
-        if not history:
-            click.echo("[!] History file is empty.")
+    # MODE 1: View history only (no --undo-last)
+    if undo_last is None:
+        if not log_file.exists():
+            click.echo("[!] No execution history found.")
+            click.echo()
+            click.echo("History is created when you apply changes with --execute mode.")
             return
         
-        click.echo(f"Execution history: {log_file}")
+        try:
+            with open(log_file, 'r') as f:
+                history = json.load(f)
+            
+            if not history:
+                click.echo("[!] History file is empty.")
+                return
+            
+            click.echo(f"Execution history: {log_file}")
+            click.echo()
+            
+            for i, entry in enumerate(reversed(history[-20:]), 1):  # Show last 20
+                click.echo(f"[{i}] {entry['timestamp']}")
+                click.echo(f"    Action: {entry['action'].upper()}")
+                click.echo(f"    Source: {entry['source']}")
+                if entry.get('target'):
+                    click.echo(f"    Target: {entry['target']}")
+                click.echo(f"    Status: {'SUCCESS' if entry['success'] else 'FAILED'}")
+                click.echo(f"    Risk:   {entry['risk'].upper()}")
+                click.echo()
+            
+            if len(history) > 20:
+                click.echo(f"... showing last 20 of {len(history)} total entries")
+            
+            # Show helpful tip
+            click.echo()
+            click.echo("Tip: Use --undo-last N to rollback operations")
+            click.echo("     Example: repo-tool rollback --undo-last 5 --execute")
+            
+        except Exception as e:
+            click.echo(f"Error reading history: {e}", err=True)
+            sys.exit(1)
+        
+        return
+    
+    # MODE 2: Rollback execution (--undo-last provided)
+    if not log_file.exists():
+        click.echo("[!] No execution history found. Nothing to rollback.")
+        return
+    
+    if undo_last <= 0:
+        click.echo("[!] --undo-last must be a positive number")
+        sys.exit(1)
+    
+    # Determine execution mode
+    dry_run_mode = not execute_rollback  # Default to dry-run unless --execute
+    
+    try:
+        # Execute rollback
+        executor = ProposalExecutor(repo_path=Path(repo_path), dry_run=dry_run_mode)
+        results = executor.rollback_moves(count=undo_last)
+        
+        if not results:
+            click.echo("[!] No operations to rollback.")
+            return
+        
+        # Display results
+        click.echo("="* 60)
+        if dry_run_mode:
+            click.echo("ROLLBACK PREVIEW (DRY-RUN)")
+        else:
+            click.echo("ROLLBACK EXECUTION")
+        click.echo("="* 60)
         click.echo()
         
-        for i, entry in enumerate(reversed(history[-20:]), 1):  # Show last 20
-            click.echo(f"[{i}] {entry['timestamp']}")
-            click.echo(f"    Action: {entry['action'].upper()}")
-            click.echo(f"    Source: {entry['source']}")
-            if entry.get('target'):
-                click.echo(f"    Target: {entry['target']}")
-            click.echo(f"    Status: {'SUCCESS' if entry['success'] else 'FAILED'}")
-            click.echo(f"    Risk:   {entry['risk'].upper()}")
-            click.echo()
+        for i, result in enumerate(results, 1):
+            if result.success:
+                click.echo(f"[{i}] ✓ {result.message}")
+            else:
+                click.echo(f"[{i}] ✗ {result.message}")
         
-        if len(history) > 20:
-            click.echo(f"... showing last 20 of {len(history)} total entries")
+        click.echo()
+        click.echo("="* 60)
+        click.echo("SUMMARY")
+        click.echo("="* 60)
+        click.echo(f"Total operations:  {len(results)}")
+        click.echo(f"Successful:        {sum(1 for r in results if r.success)}")
+        click.echo(f"Failed:            {sum(1 for r in results if not r.success)}")
+        click.echo()
+        
+        if dry_run_mode:
+            click.echo("Dry-run complete. No filesystem changes made.")
+            click.echo("Use --execute to actually undo the moves.")
+        else:
+            successful_count = sum(1 for r in results if r.success)
+            if successful_count > 0:
+                click.echo(f"[+] Successfully rolled back {successful_count} operations")
+                click.echo(f"[+] Rollback logged to .repo-tool-history.json")
+            else:
+                click.echo("[!] No operations were rolled back")
         
     except Exception as e:
-        click.echo(f"Error reading history: {e}", err=True)
+        click.echo(f"Error during rollback: {e}", err=True)
+        if verbose:
+            raise
         sys.exit(1)
 
 

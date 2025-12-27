@@ -251,41 +251,123 @@ class StructureReasoner:
         return RiskLevel.LOW
     
     def _generate_reason(self, file: FileMetadata, category: FileCategory) -> str:
-        """Generate human-readable reason for the proposal."""
+        """Generate human-readable reason for the proposal.
+        
+        V2.2: Enhanced explanations for better decision support.
+        Maps directly to classification logic - no AI hallucination.
+        """
         reasons = []
+        current_location = str(file.relative_path.parent) if file.relative_path.parent != Path('.') else 'repository root'
         
         if category == FileCategory.TESTS:
+            # Explain why it's a test file
             if file.has_tests:
-                reasons.append("Contains test functions/classes")
+                reasons.append("Contains test functions or test classes (pytest/unittest pattern detected)")
             if any(imp in self.classifier.TEST_IMPORT_PATTERNS for imp in file.imports):
-                reasons.append("Imports test frameworks")
+                test_frameworks = [imp for imp in file.imports if imp in self.classifier.TEST_IMPORT_PATTERNS]
+                reasons.append(f"Imports testing frameworks: {', '.join(test_frameworks[:2])}")
+            if file.name.startswith('test_') or file.name.endswith('_test.py'):
+                reasons.append("Follows test file naming convention")
+            
+            # Explain why it needs to move
+            if current_location not in ['tests', 'test']:
+                reasons.append(f"Currently located in {current_location}, should be in tests/ directory")
         
         elif category == FileCategory.SRC:
+            # Explain why it's application code
             if file.imports:
-                reasons.append(f"Has {len(file.imports)} imports")
-            reasons.append("Appears to be application code")
+                reasons.append(f"Contains {len(file.imports)} imports, indicating application logic")
+            if len(file.imports) > 5:
+                reasons.append("Multiple dependencies suggest core application module")
+            if not file.has_tests and not file.is_executable:
+                reasons.append("Non-executable library code (not a script)")
+            
+            # Explain why it needs to move
+            if current_location == 'repository root':
+                reasons.append("Python modules should be organized under src/ or package directory")
         
         elif category == FileCategory.SCRIPTS:
+            # Explain why it's a script
             if file.is_executable:
-                reasons.append("Has __main__ block")
-            reasons.append("Executable script pattern")
+                reasons.append("Contains __main__ block, indicating executable entry point")
+            if file.name in ['setup.py', 'manage.py', 'run.py']:
+                reasons.append("Common script name pattern detected")
+            
+            # Explain why it needs to move
+            if current_location == 'repository root':
+                reasons.append("Executable scripts should be organized in scripts/ directory")
         
         elif category == FileCategory.CONFIGS:
-            reasons.append("Configuration file")
+            # Explain what kind of config it is
+            config_types = {
+                '.env': 'environment variables',
+                '.yaml': 'YAML configuration',
+                '.yml': 'YAML configuration',
+                '.toml': 'TOML configuration',
+                '.ini': 'INI configuration',
+                '.json': 'JSON configuration',
+                'requirements.txt': 'Python dependencies',
+                'Pipfile': 'Python dependencies',
+                'pyproject.toml': 'Python project metadata',
+            }
+            
+            for pattern, config_type in config_types.items():
+                if pattern in file.name:
+                    reasons.append(f"Configuration file: {config_type}")
+                    break
+            
+            if not reasons:
+                reasons.append("Configuration file detected by naming pattern")
+            
+            # Keep root configs at root
+            if file.name in ['setup.py', 'setup.cfg', 'pyproject.toml', 'requirements.txt']:
+                reasons.append("Standard root-level configuration file")
+            elif current_location not in ['configs', 'config']:
+                reasons.append("Should be organized in configs/ directory")
         
         elif category == FileCategory.EXPERIMENTS:
-            reasons.append("Experimental/temporary file pattern")
+            # Explain why it's experimental
+            if 'test' in file.name.lower() or 'temp' in file.name.lower():
+                reasons.append("Temporary or experimental file naming pattern")
+            if 'playground' in str(file.relative_path).lower():
+                reasons.append("Located in experimental/playground area")
+            reasons.append("Consider moving to experiments/ or removing if obsolete")
         
         elif category == FileCategory.MARKDOWN:
-            reasons.append("Markdown documentation")
+            # Explain why it's documentation
+            if file.name.upper() == 'README.MD':
+                reasons.append("Primary project README - should remain at repository root")
+            else:
+                reasons.append("Markdown documentation file")
+                if current_location == 'repository root':
+                    reasons.append("Documentation files should be organized in docs/ directory")
         
         elif category == FileCategory.DATA:
-            reasons.append("Data file")
+            # Explain what kind of data
+            data_types = {
+                '.json': 'JSON data',
+                '.csv': 'CSV data',
+                '.txt': 'text data',
+                '.xml': 'XML data',
+                '.yaml': 'YAML data',
+            }
+            
+            for ext, data_type in data_types.items():
+                if file.extension == ext:
+                    reasons.append(f"Data file: {data_type}")
+                    break
+            
+            if not reasons:
+                reasons.append("Data file detected")
+            
+            if current_location == 'repository root':
+                reasons.append("Data files should be organized in data/ directory")
         
+        # Fallback
         if not reasons:
-            reasons.append(f"Classified as {category.value}")
+            reasons.append(f"Classified as {category.value} based on file analysis")
         
-        return "; ".join(reasons)
+        return ". ".join(reasons) + "."
     
     def _assess_duplicate_risk(self, filename: str) -> RiskLevel:
         """Assess risk level for duplicate files based on filename patterns.
