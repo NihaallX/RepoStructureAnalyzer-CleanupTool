@@ -1,13 +1,19 @@
 """Visualization and decision support for proposals.
 
 V2.2 Phase 2: Provides tree diff preview, impact summaries, and better decision clarity.
+V2.3: Added import breakage warnings (preflight checks).
+V2.4: Added confidence scoring and Git awareness.
 No execution risk - read-only simulation only.
 """
 from pathlib import Path
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Optional
 from collections import defaultdict
 
 from .proposal import Proposal, ActionType, RiskLevel
+from .import_analyzer import ImportAnalyzer, ImportWarning
+from .confidence import ConfidenceScore
+from .git_detector import GitDetector
+from .repo_type import RepoType
 
 
 class TreeNode:
@@ -63,19 +69,37 @@ class TreeDiffVisualizer:
     """Generates before/after tree visualization and impact summaries.
     
     Pure simulation - no filesystem writes. Works for all repository types.
+    V2.3: Added import breakage detection for Python repos.
+    V2.4: Added confidence scoring and Git awareness.
     """
     
-    def __init__(self, proposals: List[Proposal], current_files: List[Path]):
+    def __init__(self, proposals: List[Proposal], current_files: List[Path], 
+                 repo_path: Optional[Path] = None, enable_import_check: bool = True,
+                 repo_type: Optional[RepoType] = None, has_tests: bool = False,
+                 is_dry_run: bool = True):
         """Initialize visualizer.
         
         Args:
             proposals: List of proposals (MOVE and FLAG)
             current_files: List of current file paths in repository
+            repo_path: Root path of repository (required for import analysis)
+            enable_import_check: Whether to check for import breakage (Python only)
+            repo_type: Repository type (for confidence scoring)
+            has_tests: Whether tests detected (for confidence scoring)
+            is_dry_run: Whether in dry-run mode (for confidence scoring)
         """
         self.proposals = proposals
         self.current_files = current_files
         self.move_proposals = [p for p in proposals if p.action == ActionType.MOVE]
         self.flag_proposals = [p for p in proposals if p.action == ActionType.FLAG]
+        self.repo_path = repo_path
+        self.enable_import_check = enable_import_check
+        self.repo_type = repo_type
+        self.has_tests = has_tests
+        self.is_dry_run = is_dry_run
+        self._import_warnings = None  # Cached warnings
+        self._confidence_score = None  # Cached confidence
+        self._git_warnings = None  # Cached git warnings
     
     def generate_tree_diff(self, max_depth: int = 3, max_files: int = 50) -> Dict[str, str]:
         """Generate before/after tree visualization.
@@ -257,4 +281,133 @@ class TreeDiffVisualizer:
         lines.append("")
         lines.append("=" * 60)
         
+        return "\n".join(lines)    
+    def generate_import_warnings(self) -> List[ImportWarning]:
+        """Detect potential import breakage from MOVE proposals.
+        
+        Only analyzes Python repositories. Returns empty list for non-Python repos.
+        Results are cached after first call.
+        
+        Returns:
+            List of import warnings (empty if import checking disabled or non-Python repo)
+        """
+        if self._import_warnings is not None:
+            return self._import_warnings
+        
+        if not self.enable_import_check or not self.repo_path:
+            self._import_warnings = []
+            return []
+        
+        analyzer = ImportAnalyzer(self.repo_path)
+        self._import_warnings = analyzer.analyze_proposals(self.move_proposals)
+        return self._import_warnings
+    
+    def render_import_warnings(self, warnings: Optional[List[ImportWarning]] = None) -> str:
+        """Render import warnings as formatted text.
+        
+        Args:
+            warnings: List of warnings to render (if None, generates them)
+        
+        Returns:
+            Formatted warning text (empty string if no warnings)
+        """
+        if warnings is None:
+            warnings = self.generate_import_warnings()
+        
+        if not warnings:
+            return ""
+        
+        lines = []
+        lines.append("=" * 60)
+        lines.append("⚠️  IMPORT BREAKAGE WARNINGS (Python)")
+        lines.append("=" * 60)
+        lines.append("")
+        lines.append(f"Found {len(warnings)} potential import issue(s):")
+        lines.append("")
+        
+        for warning in warnings:
+            lines.append(warning.to_text())
+            lines.append("")
+        
+        lines.append("These are advisory warnings. Review imports carefully.")
+        lines.append("=" * 60)
+        
         return "\n".join(lines)
+    
+    def generate_confidence_score(self) -> ConfidenceScore:
+        """Generate confidence score for reorganization.
+        
+        Results are cached after first call.
+        
+        Returns:
+            ConfidenceScore object
+        """
+        if self._confidence_score is not None:
+            return self._confidence_score
+        
+        # Count import warnings
+        import_warnings = self.generate_import_warnings()
+        import_warnings_count = len(import_warnings)
+        
+        # Create confidence scorer
+        self._confidence_score = ConfidenceScore(
+            proposals=self.proposals,
+            repo_type=self.repo_type,
+            has_tests=self.has_tests,
+            import_warnings_count=import_warnings_count,
+            is_dry_run=self.is_dry_run
+        )
+        
+        return self._confidence_score
+    
+    def render_confidence_score(self, confidence: Optional[ConfidenceScore] = None) -> str:
+        """Render confidence score as formatted text.
+        
+        Args:
+            confidence: ConfidenceScore to render (if None, generates it)
+        
+        Returns:
+            Formatted confidence score text
+        """
+        if confidence is None:
+            confidence = self.generate_confidence_score()
+        
+        return confidence.to_text()
+    
+    def generate_git_warnings(self) -> List:
+        """Generate Git-related warnings.
+        
+        Results are cached after first call.
+        
+        Returns:
+            List of GitWarning objects (empty if not Git repo)
+        """
+        if self._git_warnings is not None:
+            return self._git_warnings
+        
+        if not self.repo_path:
+            self._git_warnings = []
+            return []
+        
+        detector = GitDetector(self.repo_path)
+        self._git_warnings = detector.analyze_proposals(self.proposals)
+        return self._git_warnings
+    
+    def render_git_warnings(self, warnings: Optional[List] = None) -> str:
+        """Render Git warnings as formatted text.
+        
+        Args:
+            warnings: List of warnings to render (if None, generates them)
+        
+        Returns:
+            Formatted warning text (empty string if no warnings or not Git repo)
+        """
+        if not self.repo_path:
+            return ""
+        
+        detector = GitDetector(self.repo_path)
+        
+        if warnings is None:
+            warnings = self.generate_git_warnings()
+        
+        return detector.render_warnings(warnings, self.proposals)

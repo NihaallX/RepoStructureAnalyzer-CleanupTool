@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-@click.version_option(version='2.2.0')
+@click.version_option(version='2.4.0')
 def cli():
     """Repo Structure Analyzer and Cleanup Tool
     
@@ -180,7 +180,21 @@ def preview(repo_path, verbose, show_tree, show_impact):
         
         # Step 3: Create visualizer
         current_file_paths = [f.relative_path for f in files]
-        visualizer = TreeDiffVisualizer(proposals, current_file_paths)
+        repo_path_obj = Path(repo_path)
+        
+        # Get repository metadata for confidence scoring
+        summary = analyzer.get_summary()
+        has_tests = summary.get('test_files', 0) > 0
+        
+        visualizer = TreeDiffVisualizer(
+            proposals, 
+            current_file_paths, 
+            repo_path=repo_path_obj, 
+            enable_import_check=True,
+            repo_type=reasoner.repo_type,
+            has_tests=has_tests,
+            is_dry_run=True  # Preview is always dry-run
+        )
         
         # Step 4: Show impact summary
         if show_impact:
@@ -202,7 +216,23 @@ def preview(repo_path, verbose, show_tree, show_impact):
                 click.echo()
                 click.echo("=" * 60)
         
-        # Step 6: Next steps
+        # Step 6: Show import warnings (Python only)
+        import_warnings_text = visualizer.render_import_warnings()
+        if import_warnings_text:
+            click.echo()
+            click.echo(import_warnings_text)
+        
+        # Step 7: Show Git warnings (if Git repo)
+        git_warnings_text = visualizer.render_git_warnings()
+        if git_warnings_text:
+            click.echo()
+            click.echo(git_warnings_text)
+        
+        # Step 8: Show confidence score
+        click.echo()
+        click.echo(visualizer.render_confidence_score())
+        
+        # Step 9: Next steps
         click.echo()
         click.echo("Next steps:")
         if reasoner.repo_type and reasoner.repo_type.value == "python_dominant":
@@ -275,9 +305,39 @@ def apply(repo_path, dry_run, yes, verbose):
         # Step 2: Show visualization (V2.2 Phase 2)
         from .visualizer import TreeDiffVisualizer
         current_file_paths = [f.relative_path for f in files]
-        visualizer = TreeDiffVisualizer(generator.proposals, current_file_paths)
+        repo_path_obj = Path(repo_path)
+        
+        # Get repository metadata for confidence scoring
+        summary = analyzer.get_summary()
+        has_tests = summary.get('test_files', 0) > 0
+        
+        visualizer = TreeDiffVisualizer(
+            generator.proposals, 
+            current_file_paths,
+            repo_path=repo_path_obj, 
+            enable_import_check=True,
+            repo_type=reasoner.repo_type,
+            has_tests=has_tests,
+            is_dry_run=dry_run
+        )
         
         click.echo(visualizer.render_impact_summary())
+        click.echo()
+        
+        # Step 2.5: Show import warnings (V2.3)
+        import_warnings_text = visualizer.render_import_warnings()
+        if import_warnings_text:
+            click.echo(import_warnings_text)
+            click.echo()
+        
+        # Step 2.6: Show Git warnings (V2.4)
+        git_warnings_text = visualizer.render_git_warnings()
+        if git_warnings_text:
+            click.echo(git_warnings_text)
+            click.echo()
+        
+        # Step 2.7: Show confidence score (V2.4)
+        click.echo(visualizer.render_confidence_score())
         click.echo()
         
         # Step 3: Show execution mode

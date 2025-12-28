@@ -1,224 +1,205 @@
-# Repo Structure Analyzer & Cleanup Tool
+# Repo Structure Analyzer and Cleanup Tool
 
-![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-60%20passing-brightgreen.svg)
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+A decision-support system for Python repository reorganization.
 
-## The Problem
+## What This Tool Is
 
-Vibe-coded repositories—projects created through rapid iteration, AI assistance, or learning-by-doing—often accumulate structural chaos:
+This is a suggest-first tool that helps you decide whether, when, and how safely to reorganize a repository's file structure. It analyzes your repository, proposes structural changes, shows you the consequences, and provides risk assessments. You review the proposals and decide what to apply.
 
-- Test files scattered in root directories
-- Source code mixed with configuration files  
-- Duplicate files with unclear purposes
-- Build artifacts committed to version control
-- Frontend noise drowning out real issues
+This is not a refactoring tool. It does not modify code, rewrite imports, or change logic. It moves files.
 
-**This tool restores signal in messy repositories** by analyzing structure and producing safe, actionable proposals without touching your files.
+## What This Tool Explicitly Does NOT Do
 
-## What This Tool Does
+- Does not rewrite code or modify imports
+- Does not refactor logic or change algorithms
+- Does not auto-commit or modify Git state
+- Does not run `git mv` or alter version control
+- Does not promise correctness or safety
+- Does not apply changes without explicit approval
+- Does not work on non-Python repositories (advisory mode only)
+- Does not auto-fix broken imports
+- Does not modify files during analysis
 
-✅ **Analyzes** repository structure with file metadata collection  
-✅ **Detects** misplaced files based on Python conventions  
-✅ **Flags** duplicate filenames with risk stratification (HIGH/MEDIUM/LOW)  
-✅ **Identifies** repository type (Python / Non-Python / Mixed)  
-✅ **Groups** duplicates into human-scale output (1 flag per duplicate set, not 1 per file)  
-✅ **Excludes** build artifacts (.next, out, dist, coverage) at scan time  
-✅ **Suppresses** expected framework patterns (e.g., index.html in Next.js sites)  
-✅ **Produces** safe proposals only—never modifies files
+## Why This Tool Exists
 
-## What This Tool Does NOT Do
+Repository reorganizations are risky and anxiety-inducing. Most tools over-automate and hide consequences. They promise to "just fix everything" and leave you with broken imports, lost Git history, or worse.
 
-❌ No automatic file moves or deletions  
-❌ No repository mutation or file system writes  
-❌ No configuration files or complex CLI setup  
-❌ No full normalization of frontend repositories  
-❌ No network calls or external dependencies beyond pip packages
+This tool prioritizes visibility, judgment, and reversibility. It shows you what will happen before anything happens. It provides risk assessments, impact summaries, and confidence scores so you can make informed decisions. It preserves your ability to say no.
 
-## Supported Ecosystems
+The philosophy: trust comes from transparency, not automation.
 
-| Ecosystem | MOVE Proposals | Duplicate Detection | Artifact Exclusion | Framework Awareness |
-|-----------|---------------|---------------------|-------------------|---------------------|
-| **Python-dominant** | ✅ Full support | ✅ Yes | ✅ Yes | N/A |
-| **Next.js / React** | ❌ Disabled (safety) | ✅ Yes (with suppression) | ✅ Yes (.next, out) | ✅ Suppresses index.html, page.tsx, etc. |
-| **Mixed (Python + JS)** | ⚠️ Python files only | ✅ Yes | ✅ Yes | ✅ Automatic detection |
-| **Non-Python** | ❌ Disabled | ✅ Yes | ✅ Yes | Partial |
+## Core Capabilities
+
+### Analysis
+
+- **Repository type detection**: Identifies Python-dominant, non-Python, or mixed repositories
+- **File classification**: Categorizes files as source, test, config, data, documentation, or experiments
+- **Structural analysis**: Detects misplaced files, duplicates, and organizational issues
+
+### Proposals
+
+- **MOVE proposals**: Suggests file relocations with explanations (Python repos only)
+- **FLAG proposals**: Identifies duplicates and structural issues (all repos)
+- **Risk assessment**: Assigns LOW, MEDIUM, or HIGH risk to each proposal
+- **Detailed reasoning**: Explains why each change is suggested
+
+### Visualization & Decision Support
+
+- **Before/after tree view**: Shows directory structure changes
+- **Impact summary**: Lists affected files, new directories, and proposal breakdown
+- **Import breakage warnings**: Detects Python imports that may break (relative imports, same-directory imports, cross-MOVE dependencies)
+- **Git awareness**: Warns about uncommitted changes and Git-tracked files (read-only, no Git modifications)
+- **Confidence score**: Provides HIGH/MEDIUM/LOW verdict with explainable factors
+
+### Execution
+
+- **Dry-run mode**: Simulates changes without touching the filesystem (default)
+- **Interactive apply**: Prompts for approval on each proposal
+- **Rollback support**: Undoes applied changes (last N operations)
+- **Execution history**: Logs all operations with timestamps
+
+## Who Should Use This
+
+- Python developers reorganizing AI-generated or chaotic projects
+- Teams cleaning up messy repository structures
+- Maintainers consolidating scattered files
+- Anyone who wants to see consequences before making changes
+
+## Who Should Not Use This
+
+- Users expecting automatic import rewriting (this tool does not modify code)
+- Users working on non-Python repositories (tool provides advisory mode only)
+- Users wanting fully automated reorganization (this tool requires human judgment)
+- Users expecting AI-powered refactoring (this tool uses simple heuristics)
+
+Walk away if you need:
+- Automatic import fixing
+- Code refactoring
+- Non-Python repository support with MOVE proposals
+- Zero human oversight
+
+## Safety Guarantees
+
+- **No hidden actions**: Every operation is logged and visible
+- **No silent filesystem changes**: Dry-run mode is the default
+- **No Git mutations**: Tool never runs `git mv`, `git add`, or `git commit`
+- **Everything reversible**: Rollback restores original state
+- **User always in control**: No changes applied without explicit approval
+- **Read-only by default**: Analysis and proposals touch nothing
+
+The tool will not modify your repository unless you explicitly run `--execute` mode and approve each change.
 
 ## Installation
 
 ```bash
-git clone https://github.com/NihaallX/RepoStructureAnalyzer-CleanupTool.git
-cd RepoStructureAnalyzer-CleanupTool
+pip install repo-structure-tool
+```
+
+Or clone and install:
+
+```bash
+git clone https://github.com/yourusername/repo-structure-tool.git
+cd repo-structure-tool
 pip install -e .
 ```
 
 ## Quick Start
 
-### Analyze repository structure
 ```bash
-python -m src.cli analyze path/to/repo
+# Analyze repository (read-only)
+repo-tool analyze
+
+# Generate proposals (read-only)
+repo-tool propose
+
+# Preview changes with visualization (read-only)
+repo-tool preview
+
+# Apply changes interactively (dry-run by default)
+repo-tool apply
+
+# Apply changes for real (requires confirmation)
+repo-tool apply --execute
+
+# Rollback last operation
+repo-tool rollback --undo-last 1 --execute
 ```
 
-Shows file counts, categories, and repository type detection.
+## Commands
 
-### Generate cleanup proposals
-```bash
-python -m src.cli propose path/to/repo
-```
+### `analyze`
+Scans repository and collects file metadata. Shows summary of file types, counts, and structure.
 
-Produces MOVE and FLAG proposals with risk assessment.
+### `propose`
+Generates MOVE and FLAG proposals based on repository analysis. Shows risk levels and reasoning.
 
-## Example Output
+### `preview`
+Displays before/after tree visualization, impact summary, import warnings, Git warnings, and confidence score. Does not modify filesystem.
 
-### Before V2: Noise Overload
-```
-# Running on a Next.js repository
-Total proposals: 847
+### `apply`
+Applies MOVE proposals interactively. Default is dry-run (simulation). Use `--execute` for real filesystem changes.
 
-FLAGs:
-- .next/static/chunks/index.js (duplicate)
-- .next/static/chunks/app.js (duplicate)  
-- out/index.html (duplicate)
-- out/about/index.html (duplicate)
-- dist/index.js (duplicate)
-... [842 more duplicates from build artifacts]
-```
+Options:
+- `--dry-run` (default): Simulate without changes
+- `--execute`: Apply changes for real
+- `--yes`: Auto-approve all (dangerous)
 
-### After V2: Human-Scale Output
-```
-Repository type: mixed (Next.js + Python)
-Ecosystem profile: nextjs
+### `rollback`
+Undoes previously applied operations. Reads from `.repo-tool-history.json`.
 
-================================================================================
-FLAGGED ISSUES (2 total)
-================================================================================
+Options:
+- `--undo-last N`: Undo last N operations
+- `--execute`: Perform rollback (dry-run by default)
 
-[1] FLAG: Duplicate filename: 3 files named 'config.json'
-RISK: HIGH
-  - api/config.json
-  - frontend/config.json
-  - backup/config.json
+## Risk Levels
 
-[2] FLAG: Duplicate filename: 2 files named 'utils.py'  
-RISK: MEDIUM
-  - scripts/utils.py
-  - tests/utils.py
+- **LOW**: Safe moves (tests to test directories, clear patterns)
+- **MEDIUM**: Moderate risk (source files, some ambiguity)
+- **HIGH**: Dangerous (duplicates, critical files like .env)
 
-================================================================================
-SUMMARY
-================================================================================
-Total proposals: 2
-By risk level:
-  high: 1
-  medium: 1
+## Confidence Score
 
-Note: Build artifacts (.next, out, dist) excluded at scan time.
-Note: Framework patterns (index.html, page.tsx) suppressed.
-```
+Each reorganization run receives a confidence score (HIGH/MEDIUM/LOW) based on:
 
-See [DEMO.md](DEMO.md) for more examples.
+- Repository type (Python vs non-Python)
+- Number and risk level of proposals
+- Import breakage warnings
+- Test presence
+- Execution mode (dry-run vs execute)
 
-## How It Works
+The score aggregates all signals into a single verdict with explainable factors.
 
-1. **Repository Type Detection** - Identifies Python-dominant, mixed, or non-Python repos
-2. **Ecosystem Profile Selection** - Applies appropriate rules (Python / Next.js / Frontend)
-3. **Artifact Exclusion** - Skips .next, out, dist, build directories entirely during scan
-4. **File Classification** - Categories: tests, source, config, docs, data, scripts
-5. **Proposal Generation** - MOVE proposals for Python repos only (safety-gated)
-6. **Duplicate Grouping** - Emits 1 FLAG per duplicate set (not 1 per file)
-7. **Framework Suppression** - Filters expected patterns (index.html in Next.js)
-8. **Risk Stratification** - HIGH/MEDIUM/LOW based on file criticality
+## Version
 
-## Interpretation of Output
+Current version: **2.4.0**
 
-### MOVE Proposals (Python repos only)
-- **Action**: Suggests relocating a file to conventional directory
-- **Example**: `test_app.py` at root → `tests/test_app.py`
-- **Gating**: Automatically disabled for non-Python repos (safety)
-- **Risk levels**:
-  - **LOW**: Documentation, markdown files
-  - **MEDIUM**: Config files, scripts  
-  - **HIGH**: Files with many dependencies
+### Recent Updates
 
-### FLAG Proposals (All repos)
-- **Action**: Highlights potential issues requiring human judgment
-- **V2 Behavior**: Grouped by duplicate set (not per-file)
-- **Examples**:
-  - **Duplicate filenames**: `3 files named 'config.json'` with example paths
-  - **Orphaned files**: Files in unexpected locations
-- **Suppression**: Expected framework patterns filtered out (index.html, page.tsx)
+- **V2.4**: Confidence scoring and Git awareness (read-only)
+- **V2.3**: Import breakage warnings for Python
+- **V2.2**: Visualization and decision support
+- **V2.1**: Interactive apply with rollback
 
-### Risk Stratification
+## Limitations
 
-| Risk | File Types | Why It Matters | Action |
-|------|-----------|----------------|--------|
-| **HIGH** | `.env`, `requirements.txt`, `Dockerfile`, `package.json` | Version conflicts, security issues, build breakage | Review immediately |
-| **MEDIUM** | Regular code files, config files | Standard organizational issues | Review when convenient |
-| **LOW** | `README.md`, `*.log`, documentation | Minimal functional impact | Safe to defer |
-
-**Important**: Duplicate detection ≠ error detection. Many duplicates are valid patterns (e.g., `__init__.py`, `index.html` in multi-page sites). This tool flags for review, not for automatic deletion.
-
-## Known Limitations & Non-Goals
-
-### What This Tool Is NOT
-
-- ❌ **Not an auto-fixer** - Proposals require human review and manual application
-- ❌ **Not a linter** - Does not check code quality or style
-- ❌ **Not framework-agnostic** - Hardcoded rules for Python and Next.js only
-- ❌ **Not configurable** - No config files, no CLI flags, no customization
-
-### Current Limitations
-
-| Limitation | Impact | Workaround |
-|------------|--------|------------|
-| **Python-first design** | Limited usefulness for pure JS/Java repos | Use for Python or mixed repos only |
-| **Frontend partial support** | Next.js awareness exists but incomplete | Duplicate detection + artifact exclusion still valuable |
-| **No auto-application** | Must manually `mv` files | By design (safety) |
-| **Hardcoded ecosystems** | Only Python/Next.js/Frontend-static | Fork and extend `ecosystem.py` if needed |
-
-### Intentional Constraints
-
-- **No configuration files**: Prevents complexity creep
-- **No plugin system**: Tool does one thing well
-- **No MOVE proposals for non-Python**: Risk > reward for unfamiliar ecosystems
-- **Structural files exempted**: `__init__.py`, `conftest.py` never flagged as duplicates
-
-## Safety Guarantees
-
-✅ **Read-only analysis** - Never modifies your files  
-✅ **Deterministic output** - Same input → same proposals  
-✅ **No side effects** - No writes, no network calls  
-✅ **Type-gated proposals** - MOVE disabled for non-Python repos  
-✅ **Explicit risk levels** - Every proposal tagged HIGH/MEDIUM/LOW  
-✅ **Human-in-the-loop** - No automatic application
-
-## Contributing
-
-This is a V2 release focused on artifact awareness and frontend noise reduction.
-
-**Contributions welcome for:**
-- Bug fixes  
-- Test coverage improvements  
-- Documentation clarity  
-- Performance optimizations  
-- New ecosystem profiles (with clear use case)
-
-**Please do NOT submit PRs for:**
-- Auto-fix features  
-- Configuration systems  
-- Generic "support all frameworks" refactors  
-- Removing safety constraints
-
-## Versioning
-
-- **v0.1**: Initial Python-first analyzer
-- **v2.0**: Artifact awareness, ecosystem profiles, grouped duplicates
+- **Python-focused**: MOVE proposals only generated for Python-dominant repositories
+- **No import rewriting**: Tool does not modify code or fix imports
+- **Simple heuristics**: Uses pattern matching, not AI or deep analysis
+- **Manual verification required**: Always review proposals before applying
+- **Git workflows**: Does not integrate with `git mv` or preserve Git history annotations
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT
+
+## Contributing
+
+Contributions welcome. Follow existing code style. Add tests for new features. Update documentation.
+
+## Support
+
+For issues, questions, or feature requests, open an issue on GitHub.
 
 ---
 
-**Philosophy**: This tool restores trust in repository analysis by producing human-scale output. It does not try to solve every problem—it solves the vibe-coded chaos problem for Python-dominant and mixed repositories.
+**Remember**: This tool helps you make decisions. It does not make decisions for you. Review all proposals carefully before applying changes.
