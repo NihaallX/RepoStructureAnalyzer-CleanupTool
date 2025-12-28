@@ -1,0 +1,29 @@
+﻿Analyzing repository: D:\spec-driven-projects\ratemyprof1.3\ratemyprof1.2\ratemyprof
+python : 2025-12-19 17:37:34,767 - src.analyzer - INFO - Initialized analyzer for: 
+D:\spec-driven-projects\ratemyprof1.3\ratemyprof1.2\ratemyprof
+At line:1 char:74
++ ... nup Tool" ; python -m src.cli propose "D:\spec-driven-projects\ratemy ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2025-12-19 17:3...f1.2\ratemyprof:Stri 
+   ng) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2025-12-19 17:37:34,767 - src.analyzer - INFO - Starting repository analysis...
+2025-12-19 17:37:35,046 - src.analyzer - INFO - Analysis complete. Found 361 files.
+Found 361 files
+Generating proposals...
+2025-12-19 17:37:35,046 - src.reasoner - INFO - Generating structural proposals...
+2025-12-19 17:37:35,046 - src.repo_type - INFO - Repository detection: 20.2% Python 
+files
+2025-12-19 17:37:35,046 - src.repo_type - INFO - Python score: 3, Non-Python score: 
+2
+2025-12-19 17:37:35,047 - src.reasoner - INFO - Repository type: non_python
+2025-12-19 17:37:35,047 - src.reasoner - INFO - Using ecosystem profile: nextjs
+2025-12-19 17:37:35,047 - src.reasoner - WARNING - Non-Python repository detected. 
+MOVE proposals disabled for safety.
+2025-12-19 17:37:35,047 - src.reasoner - INFO - Only duplicate detection and 
+flagging will be performed.
+2025-12-19 17:37:35,048 - src.reasoner - INFO - Generated 13 proposals
+Repository type: non_python
+Error: 'charmap' codec can't encode characters in position 0-1: character maps to 
+<undefined>
